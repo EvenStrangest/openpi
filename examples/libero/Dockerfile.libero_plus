@@ -1,0 +1,32 @@
+# LIBERO-Plus sim image for the pi0.5-LIBERO perturbation eval (Phase 2).
+#
+# Derived from the stock `libero` image (examples/libero/Dockerfile). We keep the
+# JAX policy-server image (openpi_server) completely untouched -- LIBERO-Plus is a
+# SIM-SIDE-ONLY change. The base `libero` venv (/.venv, Python 3.8, robosuite
+# 1.4.1) is reused as-is; robosuite is intentionally NOT downgraded to LIBERO-Plus's
+# 1.4.0 pin (the discovery flagged this as a minor delta -- keep openpi's).
+#
+# LIBERO-Plus's env_wrapper.py imports wand + skimage + scipy at MODULE level (for
+# the sensor-noise perturbation's motion/gaussian/zoom blur), so the whole `libero`
+# package fails to import without them -- even for the geometric axes that never
+# trigger a blur. scipy is already in the base venv; we add the two missing ones
+# and libmagickwand for wand's C backend. The LIBERO-Plus source + 9.5 GB assets
+# are NOT baked in: they are bind-mounted from the pinned forks/LIBERO-plus submodule
+# at run time (see run_libero_plus_s03.sh), which keeps this image small and the
+# submodule the single source of truth.
+#
+# Build:  docker build -t libero_plus -f examples/libero/Dockerfile.libero_plus .
+FROM libero
+
+# wand's shared-library backend (ImageMagick). Only exercised by sensor-noise, but
+# the module-level `from wand.api import library` needs it loadable at import time.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libmagickwand-dev \
+        libexpat1 \
+        libfontconfig1 && \
+    rm -rf /var/lib/apt/lists/*
+
+# Add the two Python deps missing from the base libero venv. Pin scikit-image to a
+# Python-3.8-compatible line; wand is pure-Python. Installed into the baked /.venv.
+RUN /bin/uv pip install --python /.venv/bin/python "wand" "scikit-image<0.20"
